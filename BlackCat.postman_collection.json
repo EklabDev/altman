@@ -1,0 +1,126 @@
+{
+  "info": {
+    "_postman_id": "4cc79272-cd8f-44dc-a49e-fd6ca1794d60",
+    "name": "BlackCat",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "30717425",
+    "_collection_link": "https://go.postman.co/collection/30717425-4cc79272-cd8f-44dc-a49e-fd6ca1794d60?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "query Blackcat",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"carrier\":\"yamato\",\n    \"numbers\":[\"905070068112\"]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8001/status",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8001",
+          "path": [
+            "status"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "query HCT",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"carrier\":\"hct\",\n    \"numbers\":[\"1001734834\"]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8001/status",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8001",
+          "path": [
+            "status"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Order HCT",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"shipments\": [{\n        \"edelno\": \"\",\n        \"epino\":\"122213311-1\", \n        \"ercsig\":\"\\u6797\\u829d\\u7fbd\",\n        \"ertel1\":\"0974052795\",\n        \"ertel2\": \"\",\n        \"eraddr\": \"114\\u53f0\\u5317\\u5e02\\u5167\\u6e56\\u5340\\u745e\\u5149\\u8def451\\u865f4\\u6a13\",\n        \"ejamt\": \"1\", \n        \"eqamt\": \"10\" ,\n        \"esdate\": \"20251222\", \n        \"escsno\": \"00000000000\",\n        \"eprdct\":\"11\"\n        }]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8001/hct/create",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8001",
+          "path": [
+            "hct",
+            "create"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Order Blackcat",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"PrintType\":\"01\",\n    \"Order\":{\n        \"OBTNumber\":\"\",\n        \"Thermosphere\":\"0001\",\n        \"Spec\":\"0001\",\n        \"RecipientName\":\"林瑋晟\",\n        \"RecipientTel\":\"\",\n        \"RecipientMobile\":\"0972912359\",\n        \"RecipientAddress\":\"台灣新竹縣湖口鄉榮光一路105號3F\",\n        \"SenderName\":\"MB\",\n        \"SenderTel\":\"0988806560\",\n        \"SenderMobile\":\"0988806560\",\n        \"SenderAddress\":\"台灣臺中市南屯區精科三路7號\",\n        \"TakeDate\":\"20251206\",\n        \"DeliveryTime\":\"04\",\n        \"IsFreight\":\"N\",\n        \"ProductName\":\"asv\",\n        \"Memo\":\"\"\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://localhost:8001/yamato/reserve/add",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8001",
+          "path": [
+            "yamato",
+            "reserve",
+            "add"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

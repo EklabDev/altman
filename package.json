@@ -1,0 +1,166 @@
+{
+  "name": "altman",
+  "displayName": "Altman - Offline Local Postman Alternative",
+  "description": "100% offline, local HTTP/HTTPS client storing collections & environments in .altman with Postman v10 UI, jsrsasign scripting, and Newman runner.",
+  "version": "0.1.0",
+  "publisher": "EKLABDEV",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Testing",
+    "Other"
+  ],
+  "keywords": [
+    "postman",
+    "http",
+    "https",
+    "rest",
+    "api client",
+    "offline",
+    "newman",
+    "jsrsasign"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "altman.openClient",
+        "title": "Altman: Open Local API Client",
+        "icon": "$(radio-tower)"
+      },
+      {
+        "command": "altman.importCollection",
+        "title": "Altman: Import Postman Collection to .altman",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "altman.newRequest",
+        "title": "Altman: New Request",
+        "icon": "$(add)"
+      },
+      {
+        "command": "altman.exportCollection",
+        "title": "Altman: Export Collection to Postman v2.1 JSON",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "altman.runNewman",
+        "title": "Altman: Compose & Run Newman Command",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "altman.exportOpenApi",
+        "title": "Altman: Export OpenAPI 3.0 YAML from Collection",
+        "icon": "$(file-code)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "altman-activity-bar",
+          "title": "Altman",
+          "icon": "media/activitybar-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "altman-activity-bar": [
+        {
+          "type": "webview",
+          "id": "altman.sidebarView",
+          "name": "Altman API Client"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "altman.openClient"
+        },
+        {
+          "command": "altman.importCollection"
+        },
+        {
+          "command": "altman.newRequest"
+        },
+        {
+          "command": "altman.exportCollection"
+        },
+        {
+          "command": "altman.runNewman"
+        },
+        {
+          "command": "altman.exportOpenApi"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "altman.openClient",
+          "when": "view == altman.sidebarView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "altman.newRequest",
+          "when": "view == altman.sidebarView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "altman.importCollection",
+          "when": "view == altman.sidebarView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "altman.exportOpenApi",
+          "when": "view == altman.sidebarView",
+          "group": "navigation@4"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "altman.importCollection",
+          "when": "resourceExtname == .json",
+          "group": "7_modification@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build": "node esbuild.config.js --production",
+    "build:dev": "node esbuild.config.js",
+    "package": "npm run build && npx @vscode/vsce package --no-dependencies -o altman-0.1.0.vsix",
+    "test": "tsc -p ./ && mocha dist/test/*.test.js",
+    "install:local": "bash scripts/install-local.sh",
+    "test:local": "bash scripts/test-local.sh"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "chai": "^4.4.1",
+    "crypto-js": "^4.2.0",
+    "js-yaml": "^5.5.0",
+    "jsrsasign": "^11.1.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.16",
+    "@types/crypto-js": "^4.2.2",
+    "@types/js-yaml": "^4.0.9",
+    "@types/jsrsasign": "^10.5.12",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.0",
+    "@types/uuid": "^9.0.8",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.2",
+    "mocha": "^10.4.0",
+    "swagger-ui-dist": "^5.34.0",
+    "typescript": "^5.4.5"
+  }
+}

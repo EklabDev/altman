@@ -1,0 +1,115 @@
+{
+  "info": {
+    "_postman_id": "altman-demo-collection-001",
+    "name": "Altman Demo Collection",
+    "description": "Comprehensive demonstration collection for Altman 100% offline local HTTP client featuring jsrsasign pre-request cryptography, dynamic templating, and test assertions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "RSA Signature & Dynamic Templating Demo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Client-Signature",
+            "value": "{{client_signature}}",
+            "description": "Generated in pre-request script via jsrsasign"
+          },
+          {
+            "key": "X-Request-Id",
+            "value": "{{request_id}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/anything?session={{$guid}}&ts={{$timestamp}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "anything"
+          ],
+          "query": [
+            {
+              "key": "session",
+              "value": "{{$guid}}"
+            },
+            {
+              "key": "ts",
+              "value": "{{$timestamp}}"
+            }
+          ]
+        },
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{auth_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          },
+          "raw": "{\n  \"app\": \"Altman Local Client\",\n  \"offline\": true,\n  \"requestId\": \"{{request_id}}\",\n  \"randomSeed\": {{$randomInt}}\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// 1. Generate crypto hash & b64 signatures using bundled jsrsasign & CryptoJS",
+              "var timestamp = Math.floor(Date.now() / 1000);",
+              "var sha256Hex = CryptoJS.SHA256('altman_offline_payload_' + timestamp).toString();",
+              "var b64Sig = jsrsasign.hextob64(sha256Hex.substring(0, 32));",
+              "",
+              "// 2. Set environment variables dynamically",
+              "pm.environment.set('client_signature', b64Sig);",
+              "pm.environment.set('request_id', 'req_' + timestamp);",
+              "pm.environment.set('auth_token', 'altman_offline_jwt_' + b64Sig);",
+              "",
+              "console.log('Pre-request: Successfully executed jsrsasign offline cryptographic routines!');",
+              "console.log('Computed Signature:', b64Sig);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200 OK', function () {",
+              "    pm.expect(pm.response.code).to.equal(200);",
+              "});",
+              "",
+              "pm.test('Response code returned valid JSON', function () {",
+              "    var data = pm.response.json();",
+              "    pm.expect(data).to.be.an('object');",
+              "});",
+              "",
+              "console.log('Test assertions completed successfully!');"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "coll_version",
+      "value": "1.0.0"
+    }
+  ]
+}

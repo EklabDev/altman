@@ -1,0 +1,6 @@
+{
+  "timeoutMs": 30000,
+  "rejectUnauthorizedSsl": false,
+  "followRedirects": true,
+  "activeEnvironmentName": "Local Development"
+}

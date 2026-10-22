@@ -1,0 +1,135 @@
+import { expect } from 'chai';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { AltmanStorage } from '../storage/altmanStorage';
+import { PostmanCollection, PostmanEnvironment } from '../types';
+
+describe('AltmanStorage', () => {
+  let tmpDir: string;
+  let storage: AltmanStorage;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'altman-test-'));
+    // AltmanStorage takes a mock Uri-like object with fsPath
+    storage = new AltmanStorage({ fsPath: tmpDir } as any);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(tmpDir)) {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should save and list collections with collection variables and scripts', () => {
+    const coll: PostmanCollection = {
+      info: {
+        name: 'Test Payments API',
+        schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
+      },
+      item: [],
+      variable: [
+        { key: 'baseUrl', value: 'https://api.payments.com', type: 'string' }
+      ],
+      event: [
+        {
+          listen: 'prerequest',
+          script: {
+            type: 'text/javascript',
+            exec: ['pm.collectionVariables.set("trace_id", "12345");']
+          }
+        }
+      ]
+    };
+
+    storage.saveCollection(coll);
+    const listed = storage.listCollections();
+    expect(listed.length).to.equal(1);
+    expect(listed[0].info.name).to.equal('Test Payments API');
+    expect(listed[0].variable?.length).to.equal(1);
+    expect(listed[0].variable?.[0].key).to.equal('baseUrl');
+    expect(listed[0].event?.length).to.equal(1);
+  });
+
+  it('should add a request to collection and delete a request from collection', () => {
+    const coll: PostmanCollection = {
+      info: {
+        name: 'Order API',
+        schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
+      },
+      item: [
+        {
+          name: 'Get Order',
+          request: {
+            method: 'GET',
+            url: { raw: 'https://api.example.com/orders/1' },
+            header: []
+          }
+        }
+      ]
+    };
+
+    storage.saveCollection(coll);
+
+    // 1. Add new request
+    const loaded = storage.getCollection('Order API')!;
+    expect(loaded.item.length).to.equal(1);
+
+    loaded.item.push({
+      name: 'Create Order',
+      request: {
+        method: 'POST',
+        url: { raw: 'https://api.example.com/orders' },
+        header: []
+      }
+    });
+    storage.saveCollection(loaded);
+
+    const afterAdd = storage.getCollection('Order API')!;
+    expect(afterAdd.item.length).to.equal(2);
+    expect(afterAdd.item[1].name).to.equal('Create Order');
+
+    // 2. Delete request
+    afterAdd.item = afterAdd.item.filter(i => i.name !== 'Get Order');
+    storage.saveCollection(afterAdd);
+
+    const afterDelete = storage.getCollection('Order API')!;
+    expect(afterDelete.item.length).to.equal(1);
+    expect(afterDelete.item[0].name).to.equal('Create Order');
+  });
+
+  it('should delete a collection', () => {
+    const coll: PostmanCollection = {
+      info: {
+        name: 'To Be Deleted',
+        schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
+      },
+      item: []
+    };
+
+    storage.saveCollection(coll);
+    expect(storage.listCollections().length).to.equal(1);
+
+    const deleted = storage.deleteCollection('To Be Deleted');
+    expect(deleted).to.be.true;
+    expect(storage.listCollections().length).to.equal(0);
+  });
+
+  it('should save, list, and delete environments', () => {
+    const env: PostmanEnvironment = {
+      name: 'Staging Env',
+      values: [
+        { key: 'host', value: 'staging.api.com', enabled: true, type: 'default' }
+      ]
+    };
+
+    storage.saveEnvironment(env);
+    const listed = storage.listEnvironments();
+    expect(listed.length).to.equal(1);
+    expect(listed[0].name).to.equal('Staging Env');
+
+    const deleted = storage.deleteEnvironment('Staging Env');
+    expect(deleted).to.be.true;
+    expect(storage.listEnvironments().length).to.equal(0);
+  });
+});

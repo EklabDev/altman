@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="altmanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff7b39"/>
+      <stop offset="100%" stop-color="#e04006"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2c3e50"/>
+      <stop offset="100%" stop-color="#1a252f"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="26" fill="url(#shieldGrad)"/>
+  <!-- Offline badge shield ring -->
+  <circle cx="64" cy="64" r="48" fill="none" stroke="#0cbb52" stroke-width="3" stroke-dasharray="6,4" opacity="0.6"/>
+  <!-- Central lightning/rocket bolt -->
+  <path d="M68 20 L36 70 L62 70 L58 108 L92 56 L66 56 Z" fill="url(#altmanGrad)"/>
+  <!-- Letter A accent -->
+  <circle cx="94" cy="94" r="14" fill="#0cbb52"/>
+  <text x="94" y="99" font-family="-apple-system, sans-serif" font-size="14" font-weight="900" fill="#ffffff" text-anchor="middle">A</text>
+</svg>
