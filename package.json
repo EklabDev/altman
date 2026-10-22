@@ -4,6 +4,10 @@
   "description": "100% offline, local HTTP/HTTPS client storing collections & environments in .altman with Postman v10 UI, jsrsasign scripting, and Newman runner.",
   "version": "0.1.0",
   "publisher": "EKLABDEV",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EklabDev/altman"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
