@@ -32,8 +32,36 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('altman.refreshAllViews', () => {
       sidebarProvider.refresh();
       updateStatusBar(storage);
+      if (AltmanPanel.currentPanel) {
+        AltmanPanel.currentPanel.refreshFromDisk();
+      }
     })
   );
+
+  // Auto-refresh when files inside .altman change
+  const altmanWatcher = vscode.workspace.createFileSystemWatcher('**/.altman/**');
+  altmanWatcher.onDidChange(() => {
+    sidebarProvider.refresh();
+    updateStatusBar(storage);
+    if (AltmanPanel.currentPanel) {
+      AltmanPanel.currentPanel.refreshFromDisk();
+    }
+  });
+  altmanWatcher.onDidCreate(() => {
+    sidebarProvider.refresh();
+    updateStatusBar(storage);
+    if (AltmanPanel.currentPanel) {
+      AltmanPanel.currentPanel.refreshFromDisk();
+    }
+  });
+  altmanWatcher.onDidDelete(() => {
+    sidebarProvider.refresh();
+    updateStatusBar(storage);
+    if (AltmanPanel.currentPanel) {
+      AltmanPanel.currentPanel.refreshFromDisk();
+    }
+  });
+  context.subscriptions.push(altmanWatcher);
 
   // Command: Open Client
   context.subscriptions.push(

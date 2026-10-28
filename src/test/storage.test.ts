@@ -132,4 +132,50 @@ describe('AltmanStorage', () => {
     expect(deleted).to.be.true;
     expect(storage.listEnvironments().length).to.equal(0);
   });
+
+  it('should update existing collection scripts without creating a duplicate file', () => {
+    // 1. Initial collection file on disk (with underscores in filename)
+    const collDir = path.join(tmpDir, '.altman', 'collections');
+    fs.mkdirSync(collDir, { recursive: true });
+    const initialColl: PostmanCollection = {
+      info: {
+        _postman_id: 'coll-uuid-001',
+        name: 'Demo Collection',
+        schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json'
+      },
+      item: [],
+      variable: []
+    };
+    fs.writeFileSync(path.join(collDir, 'Demo_Collection.json'), JSON.stringify(initialColl, null, 2), 'utf8');
+
+    // Verify it is listed as single collection
+    let collections = storage.listCollections();
+    expect(collections.length).to.equal(1);
+    expect(collections[0].info.name).to.equal('Demo Collection');
+
+    // 2. Update collection pre-request script
+    const toUpdate: PostmanCollection = {
+      ...initialColl,
+      event: [
+        {
+          listen: 'prerequest',
+          script: {
+            type: 'text/javascript',
+            exec: ['console.log(Math.random());', 'console.log(_.chunk([1,2,3], 2));']
+          }
+        }
+      ]
+    };
+    storage.saveCollection(toUpdate, 'Demo Collection');
+
+    // 3. Verify exactly 1 collection file exists on disk and listCollections returns 1
+    const files = fs.readdirSync(collDir).filter(f => f.endsWith('.json'));
+    expect(files.length).to.equal(1);
+
+    collections = storage.listCollections();
+    expect(collections.length).to.equal(1);
+    expect(collections[0].info.name).to.equal('Demo Collection');
+    expect(collections[0].event?.length).to.equal(1);
+    expect(collections[0].event?.[0].script?.exec?.[0]).to.equal('console.log(Math.random());');
+  });
 });

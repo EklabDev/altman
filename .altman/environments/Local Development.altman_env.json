@@ -9,19 +9,19 @@
     },
     {
       "key": "auth_token",
-      "value": "altman_offline_jwt_qND+yLg2SxKUFYLbgqvWQw==",
+      "value": "altman_offline_jwt_upQy5QHWFhQKYZgdgK4ykg==",
       "enabled": true,
       "type": "secret"
     },
     {
       "key": "client_signature",
-      "value": "qND+yLg2SxKUFYLbgqvWQw==",
+      "value": "upQy5QHWFhQKYZgdgK4ykg==",
       "enabled": true,
       "type": "default"
     },
     {
       "key": "request_id",
-      "value": "req_1792682284",
+      "value": "req_1793218713",
       "enabled": true,
       "type": "default"
     }

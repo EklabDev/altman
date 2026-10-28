@@ -92,6 +92,23 @@ export class AltmanPanel {
     }
   }
 
+  public refreshFromDisk() {
+    const collections = this._storage.listCollections();
+    const environments = this._storage.listEnvironments();
+    const settings = this._storage.getSettings();
+    const history = this._storage.getHistory();
+    this._panel.webview.postMessage({
+      type: 'diskReloaded',
+      data: {
+        collections,
+        environments,
+        settings,
+        history,
+        activeEnvironmentName: settings.activeEnvironmentName
+      }
+    });
+  }
+
   private async _handleMessage(message: any) {
     switch (message.type) {
       case 'getInitialData': {
@@ -119,7 +136,8 @@ export class AltmanPanel {
 
       case 'saveCollection': {
         const coll = message.collection as PostmanCollection;
-        this._storage.saveCollection(coll);
+        const originalName = message.originalName as string | undefined;
+        this._storage.saveCollection(coll, originalName);
         vscode.window.showInformationMessage(`Collection '${coll.info.name}' saved to .altman/collections`);
         this._panel.webview.postMessage({
           type: 'collectionsUpdated',
@@ -143,12 +161,20 @@ export class AltmanPanel {
 
       case 'saveEnvironment': {
         const env = message.environment as PostmanEnvironment;
-        this._storage.saveEnvironment(env);
+        const originalName = message.originalName as string | undefined;
+        this._storage.saveEnvironment(env, originalName);
         vscode.window.showInformationMessage(`Environment '${env.name}' saved to .altman/environments`);
         this._panel.webview.postMessage({
           type: 'environmentsUpdated',
           environments: this._storage.listEnvironments()
         });
+        vscode.commands.executeCommand('altman.refreshAllViews');
+        break;
+      }
+
+      case 'reloadFromDisk': {
+        this.refreshFromDisk();
+        vscode.window.showInformationMessage('Altman: Reloaded collections and environments from local files.');
         vscode.commands.executeCommand('altman.refreshAllViews');
         break;
       }
@@ -690,6 +716,7 @@ export class AltmanPanel {
           <button id="btnViewPostman" class="toggle-btn active" title="Postman Request & Testing View">⚡ Postman View</button>
           <button id="btnViewOpenApi" class="toggle-btn" title="OpenAPI 3.0 YAML View">📄 OpenAPI YAML View</button>
         </div>
+        <button id="btnReloadFromDisk" class="btn btn-secondary" title="Reload collections & environments from local disk files">🔄 Reload</button>
         <button id="btnNewRequest" class="btn btn-primary" title="New Request">+ New</button>
         <button id="btnImportColl" class="btn btn-secondary" title="Import Postman Collection v2.1">Import</button>
         <button id="btnExportColl" class="btn btn-secondary" title="Export Postman Collection v2.1">Export</button>
@@ -712,6 +739,7 @@ export class AltmanPanel {
         <div id="collectionsTab" class="sidebar-content active">
           <div class="sidebar-actions">
             <button id="btnAddCollection" class="btn btn-sm btn-outline">+ Collection</button>
+            <button id="btnRefreshCollections" class="btn btn-sm btn-outline" title="Refresh collections from disk">🔄</button>
           </div>
           <div id="collectionsList" class="tree-list">
             <!-- Dynamic tree items -->
@@ -722,6 +750,7 @@ export class AltmanPanel {
         <div id="environmentsTab" class="sidebar-content">
           <div class="sidebar-actions">
             <button id="btnAddEnvironment" class="btn btn-sm btn-outline">+ Environment</button>
+            <button id="btnRefreshEnvironments" class="btn btn-sm btn-outline" title="Refresh environments from disk">🔄</button>
           </div>
           <div id="environmentsList" class="tree-list"></div>
         </div>

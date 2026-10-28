@@ -35,6 +35,9 @@
   const btnNewWorkbenchTab = document.getElementById('btnNewWorkbenchTab');
   const envSelect = document.getElementById('envSelect');
   const btnManageEnv = document.getElementById('btnManageEnv');
+  const btnReloadFromDisk = document.getElementById('btnReloadFromDisk');
+  const btnRefreshCollections = document.getElementById('btnRefreshCollections');
+  const btnRefreshEnvironments = document.getElementById('btnRefreshEnvironments');
   const btnNewRequest = document.getElementById('btnNewRequest');
   const btnImportColl = document.getElementById('btnImportColl');
   const btnExportColl = document.getElementById('btnExportColl');
@@ -360,6 +363,13 @@
     btnManageEnv.addEventListener('click', openAddEnvironmentModal);
     btnAddEnvironment.addEventListener('click', openAddEnvironmentModal);
 
+    function triggerReloadFromDisk() {
+      vscode.postMessage({ type: 'reloadFromDisk' });
+    }
+    if (btnReloadFromDisk) btnReloadFromDisk.addEventListener('click', triggerReloadFromDisk);
+    if (btnRefreshCollections) btnRefreshCollections.addEventListener('click', triggerReloadFromDisk);
+    if (btnRefreshEnvironments) btnRefreshEnvironments.addEventListener('click', triggerReloadFromDisk);
+
     btnNewRequest.addEventListener('click', () => {
       openNewRequestTab();
     });
@@ -669,6 +679,42 @@
         }
         renderTabsBar();
         loadActiveTabIntoWorkbench();
+        break;
+
+      case 'diskReloaded':
+        collections = message.data.collections || [];
+        environments = message.data.environments || [];
+        history = message.data.history || [];
+        settings = message.data.settings || {};
+        activeEnvironmentName = message.data.activeEnvironmentName || '';
+
+        renderEnvironmentDropdown();
+        renderCollectionsTree();
+        renderEnvironmentsTree();
+        renderHistoryTree();
+        populateOpenApiCollSelect();
+        populateNewmanModal();
+
+        // If current request in workbench belongs to a collection, reload its latest data if not dirty
+        if (currentRequest.collectionName) {
+          const coll = collections.find(c => c.info.name === currentRequest.collectionName);
+          if (coll) {
+            const reqName = currentRequest.originalName || currentRequest.name;
+            const foundReq = findItemRecursive(coll.item || [], reqName);
+            const activeTab = getActiveTab();
+            if (foundReq && activeTab && !activeTab.isDirty) {
+              loadRequestIntoWorkbench(foundReq, coll.info.name);
+            }
+          }
+        }
+
+        if (btnReloadFromDisk) {
+          const origText = btnReloadFromDisk.textContent;
+          btnReloadFromDisk.textContent = '✓ Reloaded';
+          setTimeout(() => {
+            btnReloadFromDisk.textContent = origText;
+          }, 1500);
+        }
         break;
 
       case 'collectionsUpdated':
@@ -1757,7 +1803,7 @@
     }
     currentRequest.originalName = currentRequest.name;
 
-    vscode.postMessage({ type: 'saveCollection', collection: coll });
+    vscode.postMessage({ type: 'saveCollection', collection: coll, originalName: coll.info.name });
     collectionCrumb.textContent = `📁 ${coll.info.name}`;
     renderCollectionsTree();
 
@@ -2009,10 +2055,13 @@
         currentRequest.collectionName = newName;
         collectionCrumb.textContent = `📁 ${newName}`;
       }
-      vscode.postMessage({ type: 'deleteCollection', name: oldName });
     }
 
-    vscode.postMessage({ type: 'saveCollection', collection: coll });
+    vscode.postMessage({
+      type: 'saveCollection',
+      collection: coll,
+      originalName: editingCollOriginalName
+    });
     collManagerModal.classList.add('hidden');
     renderCollectionsTree();
   }
@@ -2106,7 +2155,7 @@
     };
 
     coll.item.push(newPostmanItem);
-    vscode.postMessage({ type: 'saveCollection', collection: coll });
+    vscode.postMessage({ type: 'saveCollection', collection: coll, originalName: collName });
     loadRequestIntoWorkbench(newPostmanItem, collName);
     renderCollectionsTree();
     requestNameInput.focus();
@@ -2134,7 +2183,7 @@
 
     const removed = removeItemRecursive(coll.item);
     if (removed) {
-      vscode.postMessage({ type: 'saveCollection', collection: coll });
+      vscode.postMessage({ type: 'saveCollection', collection: coll, originalName: collName });
       if (currentRequest.collectionName === collName && currentRequest.name === reqName) {
         resetRequestWorkbench();
       }

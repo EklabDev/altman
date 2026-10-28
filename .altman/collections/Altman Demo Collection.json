@@ -109,7 +109,22 @@
   "variable": [
     {
       "key": "coll_version",
-      "value": "1.0.0"
+      "value": "1.0.0",
+      "type": "string",
+      "disabled": false
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "console.log(Math.random())",
+          "console.log(_.chunk(['a', 'b', 'c', 'd'], 2))",
+          "console.log(moment())"
+        ]
+      }
     }
   ]
 }
