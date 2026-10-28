@@ -1,8 +1,12 @@
 import * as vm from 'vm';
 import * as jsrsasign from 'jsrsasign';
 import * as CryptoJS from 'crypto-js';
+import * as _ from 'lodash';
+import moment from 'moment';
 import { expect } from 'chai';
 import { ExecutionLog, TestResult } from '../types';
+
+const momentFn: any = typeof moment === 'function' ? moment : (moment as any)?.default || moment;
 
 export interface ScriptExecutionResult {
   logs: ExecutionLog[];
@@ -154,8 +158,8 @@ export class ScriptSandbox {
       };
     }
 
-    // Sandbox context with jsrsasign, CryptoJS, and pm object
-    const sandboxContext = {
+    // Sandbox context with lodash, moment, Math, jsrsasign, CryptoJS, and pm object
+    const sandboxContext: Record<string, any> = {
       pm,
       postman: pm,
       console: {
@@ -164,6 +168,20 @@ export class ScriptSandbox {
         warn: (...args: any[]) => captureLog('warn', args),
         error: (...args: any[]) => captureLog('error', args)
       },
+      _,
+      lodash: _,
+      moment: momentFn,
+      Math,
+      Date,
+      JSON,
+      parseInt,
+      parseFloat,
+      encodeURIComponent,
+      decodeURIComponent,
+      encodeURI,
+      decodeURI,
+      isNaN,
+      isFinite,
       jsrsasign,
       KJUR: (jsrsasign as any).KJUR,
       KEYUTIL: (jsrsasign as any).KEYUTIL,
@@ -178,7 +196,10 @@ export class ScriptSandbox {
       atob: (b64: string) => Buffer.from(b64, 'base64').toString('binary'),
       setTimeout: () => {},
       clearTimeout: () => {},
+      process: undefined,
       require: (modName: string) => {
+        if (modName === 'lodash' || modName === '_') return _;
+        if (modName === 'moment') return momentFn;
         if (modName === 'jsrsasign') return jsrsasign;
         if (modName === 'crypto-js') return CryptoJS;
         if (modName === 'chai') return { expect };

@@ -221,6 +221,131 @@ body.altman-body {
   gap: 12px;
 }
 
+/* Postman-Style Request Tabs Bar */
+.workbench-tabs-bar {
+  display: flex;
+  align-items: center;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  margin: -12px -20px 0 -20px;
+  padding: 0 8px;
+  min-height: 36px;
+  box-sizing: border-box;
+}
+
+.workbench-tabs-list {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  min-width: 130px;
+  max-width: 220px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background-color: transparent;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.tab-item:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-main);
+}
+
+.tab-item.active {
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  border-color: var(--border-color);
+  border-bottom: 2px solid var(--accent);
+  font-weight: 500;
+}
+
+.tab-method {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.tab-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-dirty {
+  display: none;
+  font-size: 10px;
+  color: #ff9800;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.tab-dirty.show {
+  display: inline-block;
+}
+
+.tab-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.tab-close:hover {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #eb4d4b;
+}
+
+.btn-new-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.btn-new-tab:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-main);
+}
+
 .workbench-header {
   display: flex;
   align-items: center;
@@ -391,6 +516,27 @@ body.altman-body {
   border-color: var(--accent);
 }
 
+/* Monaco Script Editors */
+.monaco-editor-host {
+  width: 100%;
+  height: 240px;
+  min-height: 180px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: var(--bg-primary);
+  box-sizing: border-box;
+}
+
+.monaco-editor-host:focus-within {
+  border-color: #ff6c37;
+  box-shadow: 0 0 0 1px rgba(255, 108, 55, 0.2);
+}
+
+.monaco-editor-host .monaco-editor {
+  border-radius: 4px;
+}
+
 .script-tips {
   font-size: 11px;
   color: var(--text-muted);
@@ -554,10 +700,21 @@ body.altman-body {
 .log-entry {
   font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
   font-size: 11px;
-  padding: 4px 8px;
-  border-radius: 3px;
+  padding: 6px 10px;
+  border-radius: 4px;
   background: var(--bg-tertiary);
   border-left: 3px solid #8e8e8e;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.log-entry.info {
+  border-left-color: #3880ff;
+}
+
+.log-entry.log {
+  border-left-color: #8e8e8e;
 }
 
 .log-entry.error {

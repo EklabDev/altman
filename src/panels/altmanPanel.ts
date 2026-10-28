@@ -13,10 +13,16 @@ import { OpenApiConverter } from '../engine/openapiConverter';
 
 export class AltmanPanel {
   public static currentPanel: AltmanPanel | undefined;
+  public static outputChannel = vscode.window.createOutputChannel('Altman');
   private readonly _panel: vscode.WebviewPanel;
   private readonly _extensionUri: vscode.Uri;
   private _disposables: vscode.Disposable[] = [];
   private _storage: AltmanStorage;
+
+  public static logOutput(level: string, message: string) {
+    const timeStr = new Date().toLocaleTimeString();
+    AltmanPanel.outputChannel.appendLine(`[${timeStr}] [${level.toUpperCase()}] ${message}`);
+  }
 
   public loadSpecificRequest(collectionName: string, requestName: string) {
     this._panel.webview.postMessage({
@@ -346,6 +352,11 @@ export class AltmanPanel {
 
     let localVars: Record<string, any> = {};
     const logs: any[] = [];
+    const addLog = (level: 'log' | 'info' | 'warn' | 'error', message: string) => {
+      const entry = { level, message, timestamp: Date.now() };
+      logs.push(entry);
+      AltmanPanel.logOutput(level, message);
+    };
 
     // 3. Run Pre-request scripts (Collection-level runs first, then Request-level)
     const collPreScript = coll?.event?.find(e => e.listen === 'prerequest')?.script;
@@ -365,7 +376,10 @@ export class AltmanPanel {
             body: typeof request.body === 'string' ? request.body : JSON.stringify(request.body)
           }
         });
-        logs.push(...collPreResult.logs);
+        for (const l of collPreResult.logs) {
+          logs.push(l);
+          AltmanPanel.logOutput(l.level, `[SCRIPT:Collection-Pre] ${l.message}`);
+        }
         envVars = collPreResult.mutatedEnvironment;
         collVars = collPreResult.mutatedCollectionVars;
         localVars = collPreResult.mutatedLocalVars;
@@ -386,7 +400,10 @@ export class AltmanPanel {
           body: typeof request.body === 'string' ? request.body : JSON.stringify(request.body)
         }
       });
-      logs.push(...preResult.logs);
+      for (const l of preResult.logs) {
+        logs.push(l);
+        AltmanPanel.logOutput(l.level, `[SCRIPT:Pre-Request] ${l.message}`);
+      }
       envVars = preResult.mutatedEnvironment;
       collVars = preResult.mutatedCollectionVars;
       localVars = preResult.mutatedLocalVars;
@@ -446,6 +463,16 @@ export class AltmanPanel {
       resolvedHeaders['Content-Type'] = contentType;
     }
 
+    // Publish Outgoing Request logic
+    addLog('info', `--> [REQUEST] ${request.method} ${finalUrl}`);
+    if (Object.keys(resolvedHeaders).length > 0) {
+      addLog('info', `[REQUEST HEADERS]\n${JSON.stringify(resolvedHeaders, null, 2)}`);
+    }
+    if (bodyData !== undefined && bodyData !== null && bodyData !== '') {
+      const bodyStr = typeof bodyData === 'string' ? bodyData : JSON.stringify(bodyData, null, 2);
+      addLog('info', `[REQUEST BODY]\n${bodyStr}`);
+    }
+
     // 5. Send HTTP/HTTPS request
     const responseResult = await HttpClient.send({
       url: finalUrl,
@@ -456,6 +483,21 @@ export class AltmanPanel {
       rejectUnauthorizedSsl: settings.rejectUnauthorizedSsl,
       followRedirects: settings.followRedirects
     });
+
+    // Publish Incoming Response logic
+    const statusLevel = (responseResult.statusCode >= 200 && responseResult.statusCode < 400)
+      ? 'info'
+      : (responseResult.statusCode === 0 ? 'error' : 'warn');
+    addLog(statusLevel, `<-- [RESPONSE] ${responseResult.statusCode} ${responseResult.statusText} (${responseResult.timeMs}ms, ${responseResult.sizeBytes} bytes)`);
+    if (responseResult.headers && Object.keys(responseResult.headers).length > 0) {
+      addLog('info', `[RESPONSE HEADERS]\n${JSON.stringify(responseResult.headers, null, 2)}`);
+    }
+    if (responseResult.body) {
+      const bodyPreview = responseResult.body.length > 2500
+        ? responseResult.body.substring(0, 2500) + `\n... [truncated, total ${responseResult.sizeBytes} bytes]`
+        : responseResult.body;
+      addLog('info', `[RESPONSE BODY]\n${bodyPreview}`);
+    }
 
     // 6. Run Test/Post-request scripts (Collection-level + Request-level)
     let testResults: any[] = [];
@@ -483,7 +525,10 @@ export class AltmanPanel {
             responseTime: responseResult.timeMs
           }
         });
-        logs.push(...collTestExec.logs);
+        for (const l of collTestExec.logs) {
+          logs.push(l);
+          AltmanPanel.logOutput(l.level, `[SCRIPT:Collection-Test] ${l.message}`);
+        }
         testResults.push(...collTestExec.testResults);
         envVars = collTestExec.mutatedEnvironment;
         collVars = collTestExec.mutatedCollectionVars;
@@ -512,11 +557,20 @@ export class AltmanPanel {
           responseTime: responseResult.timeMs
         }
       });
-      logs.push(...testExec.logs);
+      for (const l of testExec.logs) {
+        logs.push(l);
+        AltmanPanel.logOutput(l.level, `[SCRIPT:Test] ${l.message}`);
+      }
       testResults.push(...testExec.testResults);
       envVars = testExec.mutatedEnvironment;
       collVars = testExec.mutatedCollectionVars;
       localVars = testExec.mutatedLocalVars;
+    }
+
+    if (testResults.length > 0) {
+      for (const t of testResults) {
+        addLog(t.passed ? 'info' : 'error', `[TEST] ${t.passed ? 'PASS ✓' : 'FAIL ✗'} ${t.name}${t.error ? ': ' + t.error : ''}`);
+      }
     }
 
     // Persist mutated environment values after test scripts if modified
@@ -596,6 +650,9 @@ export class AltmanPanel {
   }
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
+    const monacoBaseUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'monaco', 'vs'));
+    const monacoLoaderUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'monaco', 'vs', 'loader.js'));
+    const monacoCssUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'monaco', 'vs', 'editor', 'editor.main.css'));
     const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.css'));
     const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'main.js'));
     const swaggerCssUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'media', 'swagger-ui', 'swagger-ui.css'));
@@ -607,9 +664,10 @@ export class AltmanPanel {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${webview.cspSource}; img-src ${webview.cspSource} data:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${webview.cspSource} 'unsafe-eval'; img-src ${webview.cspSource} data:; font-src ${webview.cspSource} data:; worker-src blob: data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Altman Local HTTP Client</title>
+  <link rel="stylesheet" href="${monacoCssUri}">
   <link rel="stylesheet" href="${swaggerCssUri}">
   <link rel="stylesheet" href="${cssUri}">
 </head>
@@ -619,7 +677,6 @@ export class AltmanPanel {
     <header class="top-nav">
       <div class="brand">
         <span class="brand-logo">⚡ Altman</span>
-        <span class="badge-offline">100% Offline</span>
       </div>
       <div class="top-actions">
         <div class="env-selector-wrapper">
@@ -682,8 +739,14 @@ export class AltmanPanel {
       <main class="workbench">
         <!-- Postman Workbench View Container -->
         <div id="postmanWorkbenchView" class="view-mode-container active">
-        <!-- Request Title Bar -->
-        <div class="workbench-header">
+          <!-- Postman-style Request Tabs -->
+          <div class="workbench-tabs-bar" id="workbenchTabsBar">
+            <div class="workbench-tabs-list" id="workbenchTabsList"></div>
+            <button id="btnNewWorkbenchTab" class="btn-new-tab" title="New Request Tab">+</button>
+          </div>
+
+          <!-- Request Title Bar -->
+          <div class="workbench-header">
           <input type="text" id="requestNameInput" class="request-name-input" value="Untitled Request" placeholder="Request Name" />
           <div class="collection-crumb" id="collectionCrumb">No Collection</div>
         </div>
@@ -795,9 +858,10 @@ export class AltmanPanel {
           <!-- Pre-request Script Panel -->
           <div id="preScriptPanel" class="req-panel">
             <div class="script-tips">
-              Bundled with <code>jsrsasign</code>, <code>CryptoJS</code>, and <code>pm.*</code> sandbox API.
+              Bundled with <code>jsrsasign</code>, <code>CryptoJS</code>, <code>lodash</code>, <code>moment</code>, and <code>pm.*</code> sandbox API.
             </div>
-            <textarea id="preScriptEditor" class="code-editor" placeholder="// e.g. Generating RSA or JWT token before request:&#10;const sig = new jsrsasign.KJUR.crypto.Signature({ alg: 'SHA256withRSA' });&#10;pm.environment.set('my_token', 'offline_val');"></textarea>
+            <div id="preScriptMonacoContainer" class="monaco-editor-host"></div>
+            <textarea id="preScriptEditor" class="code-editor" style="display:none;"></textarea>
           </div>
 
           <!-- Test Script Panel -->
@@ -805,7 +869,8 @@ export class AltmanPanel {
             <div class="script-tips">
               Write assertions using <code>pm.test(&quot;name&quot;, function() { pm.expect(pm.response.code).to.equal(200); })</code>
             </div>
-            <textarea id="testScriptEditor" class="code-editor" placeholder="pm.test(&quot;Status code is 200&quot;, function () {&#10;    pm.expect(pm.response.code).to.equal(200);&#10;});&#10;&#10;pm.test(&quot;Response time is less than 500ms&quot;, function () {&#10;    pm.expect(pm.response.responseTime).to.be.below(500);&#10;});"></textarea>
+            <div id="testScriptMonacoContainer" class="monaco-editor-host"></div>
+            <textarea id="testScriptEditor" class="code-editor" style="display:none;"></textarea>
           </div>
         </div>
 
@@ -864,7 +929,6 @@ export class AltmanPanel {
           <div class="openapi-header">
             <div class="openapi-info">
               <span class="openapi-title">📄 OpenAPI 3.0.3 & Swagger UI</span>
-              <span class="openapi-subtitle">Postman collection is the single source of truth.</span>
             </div>
             <div class="openapi-actions">
               <label for="openApiCollSelect">Collection:</label>
@@ -891,7 +955,6 @@ export class AltmanPanel {
             <div class="openapi-pane openapi-swagger-pane">
               <div class="pane-header">
                 <span class="pane-title">⚡ Interactive Swagger UI</span>
-                <span class="pane-badge">100% Offline</span>
               </div>
               <div class="swagger-content-wrap">
                 <div id="swaggerUiContainer"></div>
@@ -1024,13 +1087,15 @@ export class AltmanPanel {
           </div>
           <!-- Pre-request Script Tab -->
           <div id="collPreScriptTab" class="coll-modal-tab-content hidden">
-            <div class="script-tips">Runs before every request in this collection. Bundled with <code>jsrsasign</code> and <code>pm.*</code></div>
-            <textarea id="collPreScriptEditor" class="code-editor" style="height: 220px;" placeholder="// Collection-level pre-request script&#10;pm.collectionVariables.set('client_id', 'altman_app');"></textarea>
+            <div class="script-tips">Runs before every request in this collection. Bundled with <code>jsrsasign</code>, <code>lodash</code>, <code>moment</code>, and <code>pm.*</code></div>
+            <div id="collPreScriptMonacoContainer" class="monaco-editor-host"></div>
+            <textarea id="collPreScriptEditor" class="code-editor" style="display:none;"></textarea>
           </div>
           <!-- Tests Tab -->
           <div id="collTestScriptTab" class="coll-modal-tab-content hidden">
             <div class="script-tips">Runs after every request in this collection.</div>
-            <textarea id="collTestScriptEditor" class="code-editor" style="height: 220px;" placeholder="// Collection-level test assertions&#10;pm.test('Response under 1000ms', () => pm.expect(pm.response.responseTime).to.be.below(1000));"></textarea>
+            <div id="collTestScriptMonacoContainer" class="monaco-editor-host"></div>
+            <textarea id="collTestScriptEditor" class="code-editor" style="display:none;"></textarea>
           </div>
         </div>
         <div class="modal-footer">
@@ -1077,6 +1142,11 @@ export class AltmanPanel {
 
   </div>
 
+  <script nonce="${nonce}">
+    window.monacoBaseUri = "${monacoBaseUri}";
+    window.monacoNonce = "${nonce}";
+  </script>
+  <script nonce="${nonce}" src="${monacoLoaderUri}"></script>
   <script nonce="${nonce}" src="${swaggerJsUri}"></script>
   <script nonce="${nonce}" src="${swaggerPresetUri}"></script>
   <script nonce="${nonce}" src="${jsUri}"></script>

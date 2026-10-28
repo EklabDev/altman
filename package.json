@@ -150,21 +150,29 @@
     "crypto-js": "^4.2.0",
     "js-yaml": "^5.5.0",
     "jsrsasign": "^11.1.0",
-    "uuid": "^9.0.1"
+    "lodash": "^4.18.1",
+    "moment": "^2.31.0",
+    "monaco-editor": "^0.52.2",
+    "uuid": "11.1.1"
   },
   "devDependencies": {
     "@types/chai": "^4.3.16",
     "@types/crypto-js": "^4.2.2",
     "@types/js-yaml": "^4.0.9",
     "@types/jsrsasign": "^10.5.12",
+    "@types/lodash": "^4.17.27",
     "@types/mocha": "^10.0.6",
+    "@types/moment": "^2.11.29",
     "@types/node": "^20.11.0",
     "@types/uuid": "^9.0.8",
     "@types/vscode": "^1.85.0",
-    "@vscode/vsce": "^2.24.0",
-    "esbuild": "^0.20.2",
-    "mocha": "^10.4.0",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "0.25.12",
+    "mocha": "^12.0.3",
     "swagger-ui-dist": "^5.34.0",
     "typescript": "^5.4.5"
+  },
+  "overrides": {
+    "@azure/msal-node": "^7.1.2"
   }
 }

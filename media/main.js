@@ -25,7 +25,14 @@
   let generatedCodeSnippets = {};
   let editingEnvIndex = -1;
 
+  // Postman-Style Tabs State
+  let tabs = [];
+  let activeTabId = null;
+
   // DOM Elements
+  const workbenchTabsBar = document.getElementById('workbenchTabsBar');
+  const workbenchTabsList = document.getElementById('workbenchTabsList');
+  const btnNewWorkbenchTab = document.getElementById('btnNewWorkbenchTab');
   const envSelect = document.getElementById('envSelect');
   const btnManageEnv = document.getElementById('btnManageEnv');
   const btnNewRequest = document.getElementById('btnNewRequest');
@@ -65,6 +72,150 @@
 
   const preScriptEditor = document.getElementById('preScriptEditor');
   const testScriptEditor = document.getElementById('testScriptEditor');
+
+  // Monaco Editor Instances & State
+  let preScriptMonaco = null;
+  let testScriptMonaco = null;
+  let collPreScriptMonaco = null;
+  let collTestScriptMonaco = null;
+  let isSettingMonacoValue = false;
+
+  function setMonacoValueSafely(editor, val) {
+    if (!editor) return;
+    const currentVal = editor.getValue();
+    const nextVal = val || '';
+    if (currentVal === nextVal) return;
+    isSettingMonacoValue = true;
+    try {
+      editor.setValue(nextVal);
+    } finally {
+      isSettingMonacoValue = false;
+    }
+  }
+
+  function initMonacoEditors() {
+    if (typeof window.require !== 'function' || !window.monacoBaseUri) {
+      console.warn('Monaco AMD loader not available, using fallback textarea');
+      return;
+    }
+
+    try {
+      window.MonacoEnvironment = {
+        getWorkerUrl: function () {
+          return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
+            self.MonacoEnvironment = { baseUrl: '${window.monacoBaseUri}/' };
+            importScripts('${window.monacoBaseUri}/base/worker/workerMain.js');
+          `)}`;
+        }
+      };
+
+      window.require.config({
+        paths: { vs: window.monacoBaseUri },
+        cspNonce: window.monacoNonce
+      });
+
+      window.require(['vs/editor/editor.main'], function (monaco) {
+        if (!monaco || !monaco.editor) {
+          console.error('Monaco editor module failed to load');
+          return;
+        }
+
+        const editorConfig = {
+          language: 'javascript',
+          theme: 'vs-dark',
+          automaticLayout: true,
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          fontSize: 12,
+          fontFamily: "'SF Mono', Monaco, Menlo, Consolas, monospace",
+          lineNumbers: 'on',
+          lineDecorationsWidth: 8,
+          lineNumbersMinChars: 3,
+          tabSize: 2,
+          wordWrap: 'on',
+          renderLineHighlight: 'all',
+          cursorBlinking: 'smooth'
+        };
+
+        // Workbench Pre-request Script Editor
+        const preContainer = document.getElementById('preScriptMonacoContainer');
+        if (preContainer && !preScriptMonaco) {
+          preScriptMonaco = monaco.editor.create(preContainer, {
+            ...editorConfig,
+            value: currentRequest.preRequestScript || ''
+          });
+          preScriptMonaco.onDidChangeModelContent(() => {
+            if (isSettingMonacoValue) return;
+            currentRequest.preRequestScript = preScriptMonaco.getValue();
+            markActiveTabDirty();
+          });
+        }
+
+        // Workbench Test Script Editor
+        const testContainer = document.getElementById('testScriptMonacoContainer');
+        if (testContainer && !testScriptMonaco) {
+          testScriptMonaco = monaco.editor.create(testContainer, {
+            ...editorConfig,
+            value: currentRequest.testScript || ''
+          });
+          testScriptMonaco.onDidChangeModelContent(() => {
+            if (isSettingMonacoValue) return;
+            currentRequest.testScript = testScriptMonaco.getValue();
+            markActiveTabDirty();
+          });
+        }
+
+        // Collection Modal Pre-request Script Editor
+        const collPreContainer = document.getElementById('collPreScriptMonacoContainer');
+        if (collPreContainer && !collPreScriptMonaco) {
+          collPreScriptMonaco = monaco.editor.create(collPreContainer, {
+            ...editorConfig,
+            value: collPreScriptEditor?.value || ''
+          });
+        }
+
+        // Collection Modal Test Script Editor
+        const collTestContainer = document.getElementById('collTestScriptMonacoContainer');
+        if (collTestContainer && !collTestScriptMonaco) {
+          collTestScriptMonaco = monaco.editor.create(collTestContainer, {
+            ...editorConfig,
+            value: collTestScriptEditor?.value || ''
+          });
+        }
+
+        // Register IntelliSense typings for Postman / Altman sandbox globals
+        try {
+          if (monaco.languages && monaco.languages.typescript && monaco.languages.typescript.javascriptDefaults) {
+            monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+              noSemanticValidation: true,
+              noSyntaxValidation: false
+            });
+            monaco.languages.typescript.javascriptDefaults.addExtraLib(`
+              declare const pm: {
+                environment: { get(key: string): any; set(key: string, val: any): void; unset(key: string): void; clear(): void; toObject(): Record<string, any>; };
+                collectionVariables: { get(key: string): any; set(key: string, val: any): void; unset(key: string): void; clear(): void; toObject(): Record<string, any>; };
+                variables: { get(key: string): any; set(key: string, val: any): void; };
+                globals: { get(key: string): any; set(key: string, val: any): void; unset(key: string): void; clear(): void; };
+                request: { url: any; method: string; headers: any; body: any; };
+                response: { code: number; status: string; headers: any; responseTime: number; json(): any; text(): string; };
+                test(name: string, fn: () => void): void;
+                expect(actual: any): any;
+              };
+              declare const _: any;
+              declare const lodash: any;
+              declare const moment: any;
+              declare const jsrsasign: any;
+              declare const CryptoJS: any;
+            `, 'ts:filename/altman-sandbox.d.ts');
+          }
+        } catch (err) {
+          console.warn('Could not register TypeScript sandbox typings in Monaco:', err);
+        }
+      });
+    } catch (e) {
+      console.error('Failed to initialize Monaco Editor:', e);
+    }
+  }
 
   const metricStatus = document.getElementById('metricStatus');
   const metricTime = document.getElementById('metricTime');
@@ -147,7 +298,16 @@
 
   // Initialization
   function init() {
+    if (tabs.length === 0) {
+      const defaultTab = createNewTab();
+      tabs.push(defaultTab);
+      activeTabId = defaultTab.id;
+      currentRequest = defaultTab.request;
+    }
     setupEventListeners();
+    renderTabsBar();
+    loadActiveTabIntoWorkbench();
+    initMonacoEditors();
     vscode.postMessage({ type: 'getInitialData' });
   }
 
@@ -201,8 +361,14 @@
     btnAddEnvironment.addEventListener('click', openAddEnvironmentModal);
 
     btnNewRequest.addEventListener('click', () => {
-      resetRequestWorkbench();
+      openNewRequestTab();
     });
+
+    if (btnNewWorkbenchTab) {
+      btnNewWorkbenchTab.addEventListener('click', () => {
+        openNewRequestTab();
+      });
+    }
 
     btnImportColl.addEventListener('click', () => {
       vscode.postMessage({ type: 'importCollectionFile' });
@@ -242,7 +408,14 @@
         document.querySelectorAll('.req-panel').forEach(p => p.classList.remove('active'));
         tab.classList.add('active');
         const target = document.getElementById(tab.getAttribute('data-panel'));
-        if (target) target.classList.add('active');
+        if (target) {
+          target.classList.add('active');
+          if (tab.getAttribute('data-panel') === 'preScriptPanel' && preScriptMonaco) {
+            setTimeout(() => preScriptMonaco.layout(), 10);
+          } else if (tab.getAttribute('data-panel') === 'testScriptPanel' && testScriptMonaco) {
+            setTimeout(() => testScriptMonaco.layout(), 10);
+          }
+        }
       });
     });
 
@@ -257,9 +430,31 @@
       });
     });
 
-    // URL change updates query params
+    // Input change handlers for workbench
+    requestNameInput.addEventListener('input', () => {
+      markActiveTabDirty();
+    });
+
+    methodSelect.addEventListener('change', () => {
+      markActiveTabDirty();
+    });
+
+    // URL change updates query params and marks tab dirty
     urlInput.addEventListener('input', () => {
       syncUrlToQueryParams();
+      markActiveTabDirty();
+    });
+
+    rawBodyTextarea.addEventListener('input', () => {
+      markActiveTabDirty();
+    });
+
+    preScriptEditor.addEventListener('input', () => {
+      markActiveTabDirty();
+    });
+
+    testScriptEditor.addEventListener('input', () => {
+      markActiveTabDirty();
     });
 
     // Send button
@@ -272,18 +467,21 @@
     btnAddQueryParam.addEventListener('click', () => {
       currentRequest.queryParams.push({ key: '', value: '', description: '', enabled: true });
       renderQueryParamsTable();
+      markActiveTabDirty();
     });
 
     // Headers Table Add
     btnAddHeader.addEventListener('click', () => {
       currentRequest.headers.push({ key: '', value: '', description: '', enabled: true });
       renderHeadersTable();
+      markActiveTabDirty();
     });
 
     // Auth selector
     authTypeSelect.addEventListener('change', () => {
       currentRequest.auth.type = authTypeSelect.value;
       renderAuthConfigFields();
+      markActiveTabDirty();
     });
 
     // Body mode radio
@@ -292,6 +490,7 @@
         const mode = e.target.value;
         currentRequest.body.mode = mode;
         updateBodyUI();
+        markActiveTabDirty();
       });
     });
 
@@ -299,6 +498,7 @@
       if (!currentRequest.body.options) currentRequest.body.options = {};
       if (!currentRequest.body.options.raw) currentRequest.body.options.raw = {};
       currentRequest.body.options.raw.language = e.target.value;
+      markActiveTabDirty();
     });
 
     btnBeautifyBody.addEventListener('click', () => {
@@ -307,6 +507,7 @@
         const formatted = JSON.stringify(JSON.parse(val), null, 2);
         rawBodyTextarea.value = formatted;
         currentRequest.body.raw = formatted;
+        markActiveTabDirty();
       } catch (e) {
         alert('Invalid JSON body');
       }
@@ -316,6 +517,7 @@
       if (!Array.isArray(currentRequest.body.urlencoded)) currentRequest.body.urlencoded = [];
       currentRequest.body.urlencoded.push({ key: '', value: '', enabled: true });
       renderUrlEncodedTable();
+      markActiveTabDirty();
     });
 
     btnCopyResp.addEventListener('click', () => {
@@ -406,8 +608,22 @@
         document.querySelectorAll('.coll-modal-tab-content').forEach(c => c.classList.add('hidden'));
         tab.classList.add('active');
         const target = document.getElementById(tab.getAttribute('data-coll-tab'));
-        if (target) target.classList.remove('hidden');
+        if (target) {
+          target.classList.remove('hidden');
+          if (target.id === 'collPreScriptTab' && collPreScriptMonaco) {
+            setTimeout(() => collPreScriptMonaco.layout(), 10);
+          } else if (target.id === 'collTestScriptTab' && collTestScriptMonaco) {
+            setTimeout(() => collTestScriptMonaco.layout(), 10);
+          }
+        }
       });
+    });
+
+    window.addEventListener('resize', () => {
+      if (preScriptMonaco) preScriptMonaco.layout();
+      if (testScriptMonaco) testScriptMonaco.layout();
+      if (collPreScriptMonaco) collPreScriptMonaco.layout();
+      if (collTestScriptMonaco) collTestScriptMonaco.layout();
     });
 
     // New Collection Modal
@@ -446,7 +662,13 @@
         renderCollectionsTree();
         renderEnvironmentsTree();
         renderHistoryTree();
-        renderWorkbenchFromState();
+        if (tabs.length === 0) {
+          const defaultTab = createNewTab();
+          tabs.push(defaultTab);
+          activeTabId = defaultTab.id;
+        }
+        renderTabsBar();
+        loadActiveTabIntoWorkbench();
         break;
 
       case 'collectionsUpdated':
@@ -738,42 +960,10 @@
     }
   }
 
-  function loadRequestIntoWorkbench(item, collName) {
-    currentRequest.name = item.name || 'Untitled Request';
-    currentRequest.originalName = item.name || '';
-    currentRequest.collectionName = collName;
-    currentRequest.method = item.request?.method || 'GET';
-    const rawUrl = typeof item.request?.url === 'string' ? item.request.url : item.request?.url?.raw || '';
-    currentRequest.url = rawUrl;
-
-    currentRequest.headers = (item.request?.header || []).map(h => ({
-      key: h.key || '',
-      value: h.value || '',
-      description: h.description || '',
-      enabled: !h.disabled
-    }));
-
-    currentRequest.auth = item.request?.auth || { type: 'noauth' };
-    currentRequest.body = item.request?.body || { mode: 'none', raw: '' };
-
-    // Scripts
-    currentRequest.preRequestScript = '';
-    currentRequest.testScript = '';
-    for (const ev of item.event || []) {
-      const scriptCode = Array.isArray(ev.script?.exec) ? ev.script.exec.join('\n') : (ev.script?.exec || '');
-      if (ev.listen === 'prerequest') {
-        currentRequest.preRequestScript = scriptCode;
-      } else if (ev.listen === 'test') {
-        currentRequest.testScript = scriptCode;
-      }
-    }
-
-    renderWorkbenchFromState();
-    syncUrlToQueryParams();
-  }
-
-  function resetRequestWorkbench() {
-    currentRequest = {
+  // Tab Management
+  function createNewTab(initialRequest = null) {
+    const id = 'tab_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+    const req = initialRequest ? JSON.parse(JSON.stringify(initialRequest)) : {
       name: 'Untitled Request',
       originalName: '',
       method: 'GET',
@@ -786,7 +976,314 @@
       preRequestScript: '',
       testScript: 'pm.test("Status code is 200", function () {\n    pm.expect(pm.response.code).to.equal(200);\n});'
     };
+    return {
+      id,
+      name: req.name || 'Untitled Request',
+      method: req.method || 'GET',
+      isDirty: false,
+      request: req,
+      response: null,
+      activeReqPanel: 'paramsPanel',
+      activeRespPanel: 'respBodyPanel'
+    };
+  }
+
+  function getActiveTab() {
+    return tabs.find(t => t.id === activeTabId) || tabs[0];
+  }
+
+  function renderTabsBar() {
+    if (!workbenchTabsList) return;
+    workbenchTabsList.innerHTML = '';
+    for (const tab of tabs) {
+      const tabItem = document.createElement('div');
+      tabItem.className = `tab-item ${tab.id === activeTabId ? 'active' : ''}`;
+      tabItem.setAttribute('data-tab-id', tab.id);
+      tabItem.title = `${tab.method} ${tab.name}`;
+
+      tabItem.innerHTML = `
+        <span class="tab-method badge-method ${tab.method}">${tab.method}</span>
+        <span class="tab-name">${escapeHtml(tab.name || 'Untitled Request')}</span>
+        <span class="tab-dirty ${tab.isDirty ? 'show' : ''}" title="Unsaved changes">●</span>
+        <button class="tab-close" title="Close Tab">&times;</button>
+      `;
+
+      tabItem.addEventListener('click', (e) => {
+        if (e.target.closest('.tab-close')) return;
+        if (tab.id !== activeTabId) {
+          switchTab(tab.id);
+        }
+      });
+
+      tabItem.querySelector('.tab-close').addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleCloseTab(tab.id);
+      });
+
+      workbenchTabsList.appendChild(tabItem);
+    }
+  }
+
+  function updateTabBarItem(tab) {
+    if (!tab) return;
+    const tabElem = document.querySelector(`.tab-item[data-tab-id="${tab.id}"]`);
+    if (!tabElem) return;
+    const methodBadge = tabElem.querySelector('.tab-method');
+    if (methodBadge) {
+      methodBadge.className = `tab-method badge-method ${tab.method}`;
+      methodBadge.textContent = tab.method;
+    }
+    const nameElem = tabElem.querySelector('.tab-name');
+    if (nameElem) {
+      nameElem.textContent = tab.name || 'Untitled Request';
+    }
+    tabElem.title = `${tab.method} ${tab.name || 'Untitled Request'}`;
+    const dirtyElem = tabElem.querySelector('.tab-dirty');
+    if (dirtyElem) {
+      if (tab.isDirty) {
+        dirtyElem.classList.add('show');
+      } else {
+        dirtyElem.classList.remove('show');
+      }
+    }
+  }
+
+  function markActiveTabDirty() {
+    const tab = getActiveTab();
+    if (!tab) return;
+    tab.isDirty = true;
+    syncWorkbenchToRequestState();
+    tab.name = currentRequest.name || 'Untitled Request';
+    tab.method = currentRequest.method || 'GET';
+    updateTabBarItem(tab);
+  }
+
+  function switchTab(newTabId) {
+    const currentTab = getActiveTab();
+    if (currentTab) {
+      syncWorkbenchToRequestState();
+      currentTab.name = currentRequest.name || 'Untitled Request';
+      currentTab.method = currentRequest.method || 'GET';
+      const activeReq = document.querySelector('.req-tab.active');
+      if (activeReq) currentTab.activeReqPanel = activeReq.getAttribute('data-panel');
+      const activeResp = document.querySelector('.resp-tab.active');
+      if (activeResp) currentTab.activeRespPanel = activeResp.getAttribute('data-resp-panel');
+    }
+
+    activeTabId = newTabId;
+    renderTabsBar();
+    loadActiveTabIntoWorkbench();
+  }
+
+  function openNewRequestTab() {
+    const currentTab = getActiveTab();
+    if (currentTab) {
+      syncWorkbenchToRequestState();
+      currentTab.name = currentRequest.name || 'Untitled Request';
+      currentTab.method = currentRequest.method || 'GET';
+      const activeReq = document.querySelector('.req-tab.active');
+      if (activeReq) currentTab.activeReqPanel = activeReq.getAttribute('data-panel');
+      const activeResp = document.querySelector('.resp-tab.active');
+      if (activeResp) currentTab.activeRespPanel = activeResp.getAttribute('data-resp-panel');
+    }
+
+    const newTab = createNewTab();
+    tabs.push(newTab);
+    activeTabId = newTab.id;
+    renderTabsBar();
+    loadActiveTabIntoWorkbench();
+    requestNameInput.focus();
+    requestNameInput.select();
+  }
+
+  function handleCloseTab(tabId) {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    if (tab.isDirty) {
+      showConfirmDialog('Close Tab', `Close "${tab.name}" without saving? Unsaved changes will be lost.`, () => {
+        closeTab(tabId);
+      });
+    } else {
+      closeTab(tabId);
+    }
+  }
+
+  function closeTab(tabId) {
+    const idx = tabs.findIndex(t => t.id === tabId);
+    if (idx < 0) return;
+
+    tabs.splice(idx, 1);
+    if (tabs.length === 0) {
+      const freshTab = createNewTab();
+      tabs.push(freshTab);
+      activeTabId = freshTab.id;
+    } else if (activeTabId === tabId) {
+      const nextIdx = Math.min(idx, tabs.length - 1);
+      activeTabId = tabs[nextIdx].id;
+    }
+
+    renderTabsBar();
+    loadActiveTabIntoWorkbench();
+  }
+
+  function parseItemToRequest(item, collName) {
+    const rawUrl = typeof item.request?.url === 'string' ? item.request.url : item.request?.url?.raw || '';
+    const headers = (item.request?.header || []).map(h => ({
+      key: h.key || '',
+      value: h.value || '',
+      description: h.description || '',
+      enabled: !h.disabled
+    }));
+    let preRequestScript = '';
+    let testScript = '';
+    for (const ev of item.event || []) {
+      const scriptCode = Array.isArray(ev.script?.exec) ? ev.script.exec.join('\n') : (ev.script?.exec || '');
+      if (ev.listen === 'prerequest') {
+        preRequestScript = scriptCode;
+      } else if (ev.listen === 'test') {
+        testScript = scriptCode;
+      }
+    }
+    return {
+      name: item.name || 'Untitled Request',
+      originalName: item.name || '',
+      collectionName: collName || '',
+      method: item.request?.method || 'GET',
+      url: rawUrl,
+      headers: headers.length > 0 ? headers : [{ key: 'Accept', value: 'application/json', enabled: true }],
+      queryParams: [],
+      auth: item.request?.auth ? JSON.parse(JSON.stringify(item.request.auth)) : { type: 'noauth' },
+      body: item.request?.body ? JSON.parse(JSON.stringify(item.request.body)) : { mode: 'none', raw: '' },
+      preRequestScript,
+      testScript
+    };
+  }
+
+  function loadRequestIntoWorkbench(item, collName) {
+    const newReq = parseItemToRequest(item, collName);
+
+    // 1. Check if this request is already open in a tab
+    const existingTab = tabs.find(t => t.request.collectionName === collName && (t.request.originalName === item.name || t.request.name === item.name));
+    if (existingTab) {
+      switchTab(existingTab.id);
+      return;
+    }
+
+    // 2. Check if current active tab is completely untouched/empty
+    const currentTab = getActiveTab();
+    if (currentTab && !currentTab.isDirty && currentTab.name === 'Untitled Request' && !currentTab.request.url && !currentTab.request.collectionName) {
+      currentTab.request = newReq;
+      currentTab.name = newReq.name;
+      currentTab.method = newReq.method;
+      currentTab.isDirty = false;
+      currentTab.response = null;
+      renderTabsBar();
+      loadActiveTabIntoWorkbench();
+      return;
+    }
+
+    // 3. Otherwise create and activate a new tab
+    if (currentTab) {
+      syncWorkbenchToRequestState();
+      currentTab.name = currentRequest.name || 'Untitled Request';
+      currentTab.method = currentRequest.method || 'GET';
+      const activeReq = document.querySelector('.req-tab.active');
+      if (activeReq) currentTab.activeReqPanel = activeReq.getAttribute('data-panel');
+      const activeResp = document.querySelector('.resp-tab.active');
+      if (activeResp) currentTab.activeRespPanel = activeResp.getAttribute('data-resp-panel');
+    }
+
+    const newTab = createNewTab(newReq);
+    tabs.push(newTab);
+    activeTabId = newTab.id;
+    renderTabsBar();
+    loadActiveTabIntoWorkbench();
+  }
+
+  function resetRequestWorkbench() {
+    const tab = getActiveTab();
+    if (tab) {
+      tab.request = {
+        name: 'Untitled Request',
+        originalName: '',
+        method: 'GET',
+        url: '',
+        collectionName: '',
+        headers: [{ key: 'Accept', value: 'application/json', enabled: true }],
+        queryParams: [],
+        auth: { type: 'noauth' },
+        body: { mode: 'none', raw: '', options: { raw: { language: 'json' } }, urlencoded: [] },
+        preRequestScript: '',
+        testScript: 'pm.test("Status code is 200", function () {\n    pm.expect(pm.response.code).to.equal(200);\n});'
+      };
+      tab.name = 'Untitled Request';
+      tab.method = 'GET';
+      tab.isDirty = false;
+      tab.response = null;
+      renderTabsBar();
+      loadActiveTabIntoWorkbench();
+    }
+  }
+
+  function loadActiveTabIntoWorkbench() {
+    const tab = getActiveTab();
+    if (!tab) return;
+    currentRequest = tab.request;
     renderWorkbenchFromState();
+    syncUrlToQueryParams();
+
+    // Restore active request subpanel
+    if (tab.activeReqPanel) {
+      document.querySelectorAll('.req-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.req-panel').forEach(p => p.classList.remove('active'));
+      const reqTabBtn = document.querySelector(`.req-tab[data-panel="${tab.activeReqPanel}"]`);
+      const reqPanel = document.getElementById(tab.activeReqPanel);
+      if (reqTabBtn && reqPanel) {
+        reqTabBtn.classList.add('active');
+        reqPanel.classList.add('active');
+        if (tab.activeReqPanel === 'preScriptPanel' && preScriptMonaco) {
+          setTimeout(() => preScriptMonaco.layout(), 10);
+        } else if (tab.activeReqPanel === 'testScriptPanel' && testScriptMonaco) {
+          setTimeout(() => testScriptMonaco.layout(), 10);
+        }
+      }
+    }
+
+    // Restore response
+    if (tab.response) {
+      renderResponse(tab.response);
+      if (tab.activeRespPanel) {
+        document.querySelectorAll('.resp-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.resp-subpanel').forEach(p => p.classList.remove('active'));
+        const respTabBtn = document.querySelector(`.resp-tab[data-resp-panel="${tab.activeRespPanel}"]`);
+        const respPanel = document.getElementById(tab.activeRespPanel);
+        if (respTabBtn && respPanel) {
+          respTabBtn.classList.add('active');
+          respPanel.classList.add('active');
+        }
+      }
+    } else {
+      clearResponseUI();
+    }
+  }
+
+  function clearResponseUI() {
+    metricStatus.textContent = 'Status: --';
+    metricStatus.className = 'metric-pill';
+    metricTime.textContent = 'Time: -- ms';
+    metricSize.textContent = 'Size: -- B';
+    respHeaderBadge.textContent = '0';
+    respCookieBadge.textContent = '0';
+    respTestsBadge.textContent = '0/0';
+    respLogsBadge.textContent = '0';
+    btnSend.textContent = 'Send';
+    btnSend.disabled = false;
+    responseBodyViewer.innerText = 'Send a request to see the response here.';
+    responseHeadersBody.innerHTML = '';
+    responseCookiesBody.innerHTML = '';
+    testResultsList.innerHTML = '<div class="placeholder-text">No tests executed yet.</div>';
+    consoleLogsList.innerHTML = '<div class="placeholder-text">No script console logs yet.</div>';
   }
 
   function renderWorkbenchFromState() {
@@ -814,17 +1311,21 @@
     renderUrlEncodedTable();
 
     // Scripts
-    preScriptEditor.value = currentRequest.preRequestScript || '';
-    testScriptEditor.value = currentRequest.testScript || '';
+    setMonacoValueSafely(preScriptMonaco, currentRequest.preRequestScript || '');
+    setMonacoValueSafely(testScriptMonaco, currentRequest.testScript || '');
+    if (preScriptEditor) preScriptEditor.value = currentRequest.preRequestScript || '';
+    if (testScriptEditor) testScriptEditor.value = currentRequest.testScript || '';
   }
 
   function syncWorkbenchToRequestState() {
     currentRequest.name = requestNameInput.value;
     currentRequest.method = methodSelect.value;
     currentRequest.url = urlInput.value;
-    currentRequest.preRequestScript = preScriptEditor.value;
-    currentRequest.testScript = testScriptEditor.value;
-    currentRequest.body.raw = rawBodyTextarea.value;
+    currentRequest.preRequestScript = preScriptMonaco ? preScriptMonaco.getValue() : (preScriptEditor?.value || '');
+    currentRequest.testScript = testScriptMonaco ? testScriptMonaco.getValue() : (testScriptEditor?.value || '');
+    if (currentRequest.body) {
+      currentRequest.body.raw = rawBodyTextarea.value;
+    }
   }
 
   function updateBodyUI() {
@@ -861,16 +1362,25 @@
       tr.querySelector('.h-enabled').addEventListener('change', (e) => {
         h.enabled = e.target.checked;
         headerCountBadge.textContent = currentRequest.headers.filter(x => x.enabled && x.key).length;
+        markActiveTabDirty();
       });
       tr.querySelector('.h-key').addEventListener('input', (e) => {
         h.key = e.target.value;
         headerCountBadge.textContent = currentRequest.headers.filter(x => x.enabled && x.key).length;
+        markActiveTabDirty();
       });
-      tr.querySelector('.h-val').addEventListener('input', (e) => { h.value = e.target.value; });
-      tr.querySelector('.h-desc').addEventListener('input', (e) => { h.description = e.target.value; });
+      tr.querySelector('.h-val').addEventListener('input', (e) => {
+        h.value = e.target.value;
+        markActiveTabDirty();
+      });
+      tr.querySelector('.h-desc').addEventListener('input', (e) => {
+        h.description = e.target.value;
+        markActiveTabDirty();
+      });
       tr.querySelector('.btn-del-header').addEventListener('click', () => {
         currentRequest.headers.splice(idx, 1);
         renderHeadersTable();
+        markActiveTabDirty();
       });
 
       headersBody.appendChild(tr);
@@ -921,19 +1431,23 @@
       tr.querySelector('.q-enabled').addEventListener('change', (e) => {
         q.enabled = e.target.checked;
         syncQueryParamsToUrl();
+        markActiveTabDirty();
       });
       tr.querySelector('.q-key').addEventListener('input', (e) => {
         q.key = e.target.value;
         syncQueryParamsToUrl();
+        markActiveTabDirty();
       });
       tr.querySelector('.q-val').addEventListener('input', (e) => {
         q.value = e.target.value;
         syncQueryParamsToUrl();
+        markActiveTabDirty();
       });
       tr.querySelector('.btn-del-query').addEventListener('click', () => {
         currentRequest.queryParams.splice(idx, 1);
         renderQueryParamsTable();
         syncQueryParamsToUrl();
+        markActiveTabDirty();
       });
 
       queryParamsBody.appendChild(tr);
@@ -954,6 +1468,7 @@
       `;
       document.getElementById('bearerTokenInput').addEventListener('input', (e) => {
         currentRequest.auth.bearer = [{ key: 'token', value: e.target.value, type: 'string' }];
+        markActiveTabDirty();
       });
     } else if (type === 'basic') {
       const user = currentRequest.auth.basic?.find(b => b.key === 'username')?.value || '';
@@ -970,9 +1485,11 @@
       `;
       document.getElementById('basicUserInput').addEventListener('input', (e) => {
         updateBasicAuth(e.target.value, pass);
+        markActiveTabDirty();
       });
       document.getElementById('basicPassInput').addEventListener('input', (e) => {
         updateBasicAuth(user, e.target.value);
+        markActiveTabDirty();
       });
     } else if (type === 'apikey') {
       const key = currentRequest.auth.apikey?.find(k => k.key === 'key')?.value || '';
@@ -989,9 +1506,11 @@
       `;
       document.getElementById('apiKeyName').addEventListener('input', (e) => {
         updateApiKey(e.target.value, val);
+        markActiveTabDirty();
       });
       document.getElementById('apiKeyValue').addEventListener('input', (e) => {
         updateApiKey(key, e.target.value);
+        markActiveTabDirty();
       });
     }
   }
@@ -1022,12 +1541,22 @@
         <td><input type="text" value="${escapeHtml(item.value)}" placeholder="Value" class="u-val"></td>
         <td><button class="btn-danger-text btn-del-urlencoded">&times;</button></td>
       `;
-      tr.querySelector('.u-enabled').addEventListener('change', (e) => { item.enabled = e.target.checked; });
-      tr.querySelector('.u-key').addEventListener('input', (e) => { item.key = e.target.value; });
-      tr.querySelector('.u-val').addEventListener('input', (e) => { item.value = e.target.value; });
+      tr.querySelector('.u-enabled').addEventListener('change', (e) => {
+        item.enabled = e.target.checked;
+        markActiveTabDirty();
+      });
+      tr.querySelector('.u-key').addEventListener('input', (e) => {
+        item.key = e.target.value;
+        markActiveTabDirty();
+      });
+      tr.querySelector('.u-val').addEventListener('input', (e) => {
+        item.value = e.target.value;
+        markActiveTabDirty();
+      });
       tr.querySelector('.btn-del-urlencoded').addEventListener('click', () => {
         list.splice(idx, 1);
         renderUrlEncodedTable();
+        markActiveTabDirty();
       });
       urlEncodedBody.appendChild(tr);
     });
@@ -1075,6 +1604,20 @@
     if (updatedHistory) {
       history = updatedHistory;
       renderHistoryTree();
+    }
+
+    const tab = getActiveTab();
+    if (tab) {
+      tab.response = resp;
+    }
+
+    renderResponse(resp);
+  }
+
+  function renderResponse(resp) {
+    if (!resp) {
+      clearResponseUI();
+      return;
     }
 
     // Update Status Pill
@@ -1141,13 +1684,13 @@
     const logs = resp.logs || [];
     respLogsBadge.textContent = logs.length;
     if (logs.length === 0) {
-      consoleLogsList.innerHTML = '<div class="placeholder-text">No console logs output by scripts.</div>';
+      consoleLogsList.innerHTML = '<div class="placeholder-text">No logs output for this request.</div>';
     } else {
       for (const l of logs) {
         const logNode = document.createElement('div');
-        logNode.className = `log-entry ${l.level}`;
+        logNode.className = `log-entry ${l.level || 'info'}`;
         const timeStr = new Date(l.timestamp).toLocaleTimeString();
-        logNode.innerHTML = `<span style="color:var(--text-muted);">[${timeStr}] [${l.level.toUpperCase()}]</span> ${escapeHtml(l.message)}`;
+        logNode.innerHTML = `<span style="color:var(--text-muted); font-weight:600;">[${timeStr}] [${(l.level || 'INFO').toUpperCase()}]</span>\n${escapeHtml(l.message)}`;
         consoleLogsList.appendChild(logNode);
       }
     }
@@ -1217,6 +1760,15 @@
     vscode.postMessage({ type: 'saveCollection', collection: coll });
     collectionCrumb.textContent = `📁 ${coll.info.name}`;
     renderCollectionsTree();
+
+    const tab = getActiveTab();
+    if (tab) {
+      tab.isDirty = false;
+      tab.name = currentRequest.name;
+      tab.method = currentRequest.method;
+      tab.request.originalName = currentRequest.name;
+      updateTabBarItem(tab);
+    }
   }
 
   // Newman Modal
@@ -1373,10 +1925,16 @@
         testScript = code;
       }
     }
-    collPreScriptEditor.value = preScript;
-    collTestScriptEditor.value = testScript;
+    setMonacoValueSafely(collPreScriptMonaco, preScript);
+    setMonacoValueSafely(collTestScriptMonaco, testScript);
+    if (collPreScriptEditor) collPreScriptEditor.value = preScript;
+    if (collTestScriptEditor) collTestScriptEditor.value = testScript;
 
     collManagerModal.classList.remove('hidden');
+    setTimeout(() => {
+      if (collPreScriptMonaco) collPreScriptMonaco.layout();
+      if (collTestScriptMonaco) collTestScriptMonaco.layout();
+    }, 20);
   }
 
   function addCollVarRow(key, val, desc, enabled) {
@@ -1423,7 +1981,7 @@
       coll.event = [];
     }
     coll.event = coll.event.filter(e => e.listen !== 'prerequest' && e.listen !== 'test');
-    const pre = collPreScriptEditor.value;
+    const pre = collPreScriptMonaco ? collPreScriptMonaco.getValue() : (collPreScriptEditor?.value || '');
     if (pre && pre.trim()) {
       coll.event.push({
         listen: 'prerequest',
@@ -1433,7 +1991,7 @@
         }
       });
     }
-    const test = collTestScriptEditor.value;
+    const test = collTestScriptMonaco ? collTestScriptMonaco.getValue() : (collTestScriptEditor?.value || '');
     if (test && test.trim()) {
       coll.event.push({
         listen: 'test',
