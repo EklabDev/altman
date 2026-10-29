@@ -2,7 +2,7 @@
   "name": "altman",
   "displayName": "Altman - Offline Local Postman Alternative",
   "description": "100% offline, local HTTP/HTTPS client storing collections & environments in .altman with Postman v10 UI, jsrsasign scripting, and Newman runner.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "EKLABDEV",
   "repository": {
     "type": "git",
